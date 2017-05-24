@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import asyncio
 import sys
 
@@ -12,29 +13,43 @@ class DateProtocol(asyncio.SubprocessProtocol):
     def process_exited(self):
         self.exit_future.set_result(True)
 
-@asyncio.coroutine
-def get_date(loop):
-    code = 'import datetime; print(datetime.datetime.now())'
-    exit_future = asyncio.Future(loop=loop)
 
-    # Create the subprocess controlled by the protocol DateProtocol,
-    # redirect the standard output into a pipe
-    create = loop.subprocess_exec(lambda: DateProtocol(exit_future),
-                                  sys.executable, '-c', code,
-                                  stdin=None, stderr=None)
-    transport, protocol = yield from create
+def on_pid(future):
+    pid = future.result()
+    print('pid={}'.format(pid))
 
-    # Wait for the subprocess exit using the process_exited() method
-    # of the protocol
-    yield from exit_future
+def on_date(future):
+    date = future.result()
+    print('date="{}"'.format(date.decode('ascii').rstrip()))
 
-    # Close the stdout pipe
-    transport.close()
+class job:
+    async def get_date(self, loop):
+        date = asyncio.Future(loop=loop)
+        date.add_done_callback(on_date)
+        await self.exit_future
 
-    # Read the output which was collected by the pipe_data_received()
-    # method of the protocol
-    data = bytes(protocol.output)
-    return data.decode('ascii').rstrip()
+        # Close the stdout pipe
+        self.transport.close()
+
+        # Read the output which was collected by the pipe_data_received()
+        # method of the protocol
+        date.set_result(bytes(self.protocol.output))
+
+    async def get_pid(self, loop):
+        self.exit_future = asyncio.Future(loop=loop)
+        self.pid_future = asyncio.Future(loop=loop)
+        self.pid_future.add_done_callback(on_pid)
+
+        # Create the subprocess controlled by the protocol DateProtocol,
+        # redirect the standard output into a pipe
+        create = loop.subprocess_exec(lambda: DateProtocol(self.exit_future),
+                                      'test1.sh',
+                                      stdin=None, stderr=None)
+        transport, protocol = await create
+        self.transport = transport
+        self.protocol = protocol
+        pid = transport.get_pid()
+        self.pid_future.set_result(pid)
 
 if sys.platform == "win32":
     loop = asyncio.ProactorEventLoop()
@@ -42,6 +57,8 @@ if sys.platform == "win32":
 else:
     loop = asyncio.get_event_loop()
 
-date = loop.run_until_complete(get_date(loop))
-print("Current date: %s" % date)
+j = job()
+
+asyncio.ensure_future(j.get_pid(loop))
+results = loop.run_until_complete(j.get_date(loop))
 loop.close()
