@@ -20,7 +20,8 @@ class JobProtocol(asyncio.SubprocessProtocol):
 
     @asyncio.coroutine
     def done(self):
-        asyncio.ensure_future(self.done_future)
+        # ??? Should I be telling the event loop about this future.
+        #asyncio.ensure_future(self.done_future)
         yield from self.done_future
 
 def on_pid(future):
@@ -50,8 +51,8 @@ class job:
         self.start_future = asyncio.Future(loop=loop)
         self.finish_future = asyncio.Future(loop=loop)
 
-    def command(self, value):
-        self.command = value
+    def command(self, *args):
+        self.command = args
 
     def __await__(self):
         create = self.loop.subprocess_exec(lambda:
@@ -65,40 +66,16 @@ class job:
         yield from protocol.done()
         print('process finished, pid="{}"'.format(pid))
 
-    async def start(self, loop):
-        # Create the subprocess controlled by the protocol DateProtocol,
-        # redirect the standard output into a pipe
-        create = loop.subprocess_exec(lambda:
-                                      JobProtocol(self),
-                                      *self.command,
-                                      stdin=None)
-        asyncio.ensure_future(self.finish_future)
-        transport, protocol = await create
-        print('Process started, pid="{}"'.format(transport.get_pid()))
-        self.start_future.set_result( (transport, protocol) )
-
     def default_output_handler(self, data, save, buf):
         print(data.decode('ascii'))
         if save:
             buf.extend(data)
 
     def default_stdout_handler(self, data):
-        self.default_output_handler(data, self.save_stdout, self.stdout)
+        self.default_output_handler(b'stdout: ' + data, self.save_stdout, self.stdout)
 
-    def default_stderr_handler(self, future):
-        self.default_output_handler(data, self.save_stderr, self.stderr)
-
-    def default_finish_handler(self):
-        (transport, protocol) = self.start_future.result()
-        print('Process finished, pid="{}"'.format(transport.get_pid()))
-        transport.close()
-        print('STDOUT')
-        print('------')
-        print(self.stdout.decode('ascii'))
-        print('STDERR')
-        print('------')
-        print(self.stderr.decode('ascii'))
-        self.loop.stop()
+    def default_stderr_handler(self, data):
+        self.default_output_handler(b'stderr: ' + data, self.save_stderr, self.stderr)
 
 if sys.platform == "win32":
     loop = asyncio.ProactorEventLoop()
@@ -107,9 +84,9 @@ else:
     loop = asyncio.get_event_loop()
 
 j = job(loop, save_stdout=True, save_stderr=True)
-j.command(['test2.sh', '5'])
-asyncio.ensure_future(j)
-results = loop.run_forever()
+j.command('test2.sh', '5')
+#asyncio.ensure_future(j)
+results = loop.run_until_complete(j)
 loop.close()
 
 # j.cmd = ['sleep', '1']
