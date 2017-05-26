@@ -55,16 +55,18 @@ class job:
         self.command = args
 
     def __await__(self):
-        create = self.loop.subprocess_exec(lambda:
-                                           JobProtocol(self),
-                                           *self.command,
-                                           stdin=None)
+        create = asyncio.create_subprocess_exec(
+                                           *self.command)
         asyncio.ensure_future(self.finish_future)
-        transport, protocol = (yield from create)
-        pid=transport.get_pid()
+        self.process = yield from create
+        pid=self.process.pid
         print('Process started, pid="{}"'.format(pid))
-        yield from protocol.done()
+        yield from self.process.wait()
         print('process finished, pid="{}"'.format(pid))
+
+    async def print_stdout(self):
+        async for data in self.process.read():
+            print(data)
 
     def default_output_handler(self, data, save, buf):
         print(data.decode('ascii'))
@@ -84,9 +86,13 @@ else:
     loop = asyncio.get_event_loop()
 
 j = job(loop, save_stdout=True, save_stderr=True)
-j.command('test2.sh', '5')
-#asyncio.ensure_future(j)
-results = loop.run_until_complete(j)
+j.command('./test2.sh', '5')
+
+async def main(j):
+    await j
+    await j
+    
+results = loop.run_until_complete(main(j))
 loop.close()
 
 # j.cmd = ['sleep', '1']
