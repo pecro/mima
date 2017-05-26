@@ -5,6 +5,7 @@ import sys
 class JobProtocol(asyncio.SubprocessProtocol):
     def __init__(self, j):
         self.j = j
+        self.done_future = asyncio.Future(loop=j.loop)
 
     def pipe_data_received(self, fd, data):
         if fd == 1:
@@ -15,7 +16,12 @@ class JobProtocol(asyncio.SubprocessProtocol):
             raise ValueError('Unknown fd number "{}"'.format(fd))
 
     def process_exited(self):
-        self.j.default_finish_handler()
+        self.done_future.set_result(True)
+
+    @asyncio.coroutine
+    def done(self):
+        asyncio.ensure_future(self.done_future)
+        yield from self.done_future
 
 def on_pid(future):
     pid = future.result()
@@ -46,6 +52,18 @@ class job:
 
     def command(self, value):
         self.command = value
+
+    def __await__(self):
+        create = self.loop.subprocess_exec(lambda:
+                                           JobProtocol(self),
+                                           *self.command,
+                                           stdin=None)
+        asyncio.ensure_future(self.finish_future)
+        transport, protocol = (yield from create)
+        pid=transport.get_pid()
+        print('Process started, pid="{}"'.format(pid))
+        yield from protocol.done()
+        print('process finished, pid="{}"'.format(pid))
 
     async def start(self, loop):
         # Create the subprocess controlled by the protocol DateProtocol,
@@ -90,7 +108,7 @@ else:
 
 j = job(loop, save_stdout=True, save_stderr=True)
 j.command(['test2.sh', '5'])
-asyncio.ensure_future(j.start(loop))
+asyncio.ensure_future(j)
 results = loop.run_forever()
 loop.close()
 
