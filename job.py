@@ -85,7 +85,7 @@ class chunk:
 
 async def printer(io, name):
     while True:
-        data = await io
+        data = await io()
         if not data:
             break
         print('*** {} ***'.format(name))
@@ -111,8 +111,8 @@ async def main(loop):
     await j.run()
     print('job started: {}'.format(j.process.pid))
     #asyncio.ensure_future(printer(j))
-    loop.create_task(printer(j.stdout(), 'STDOUT'))
-    loop.create_task(printer(j.stderr(), 'STDERR'))
+    loop.create_task(printer(j.stdout, 'STDOUT'))
+    loop.create_task(printer(j.stderr, 'STDERR'))
     await j.finish()
     print('job finished: {}'.format(j.process.pid))
 
