@@ -10,7 +10,7 @@ import sys
 # job.pause() ??
 #
 class job:
-    def __init__(self, loop, save_stdout=False, save_stderr=False, save_mixed=False, limit=(1024*4)):
+    def __init__(self, loop, save_stdout=False, save_stderr=False, save_mixed=False, echo=False, limit=(1024*4)):
         self.loop = loop
         #self.stdout = bytearray()
         #self.stderr = bytearray()
@@ -22,11 +22,12 @@ class job:
         self.buf_mixed = bytearray()
         self.limit = limit
         self.tasks = list()
+        self._started = False
 
     def command(self, *args):
         self.command = args
 
-    async def run(self):
+    async def start(self):
         create = asyncio.create_subprocess_exec(
             *self.command,
             stdout=asyncio.subprocess.PIPE,
@@ -41,6 +42,7 @@ class job:
                 self.tasks.append(self.loop.create_task(self.stdout_saver()))
             if self.save_stderr:
                 self.tasks.append(self.loop.create_task(self.stderr_saver()))
+        self._started = True
 
     async def stdout_saver(self):
         while True:
@@ -63,6 +65,8 @@ class job:
                 self.buf_stderr.extend(data)
         
     async def finish(self):
+        if not self._started:
+            await self.start()
         await self.process.wait()
         print('Process end: {}'.format(self.process.pid))
 
@@ -151,24 +155,25 @@ def print_bufs(j):
 async def test_buf_saves(loop):
     j = job(loop, save_stdout=True)
     j.command('./test2.sh', '5')
-    await j.run()
     await j.finish()
     print_bufs(j)
     j = job(loop, save_stderr=True)
     j.command('./test2.sh', '5')
-    await j.run()
     await j.finish()
     print_bufs(j)
     j = job(loop, save_mixed=True)
     j.command('./test2.sh', '5')
-    await j.run()
+    await j.finish()
+    print_bufs(j)
+    j = job(loop, save_stdout=True, save_stderr=True, save_mixed=True)
+    j.command('./test2.sh', '5')
     await j.finish()
     print_bufs(j)
     
 async def main(loop):
     j = job(loop, save_stdout=True, save_stderr=True)
     j.command('./test2.sh', '5')
-    await j.run()
+    await j.start()
     print('job started: {}'.format(j.process.pid))
     #asyncio.ensure_future(printer(j))
     loop.create_task(printer(j.stdout, 'STDOUT'))
