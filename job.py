@@ -10,13 +10,18 @@ import sys
 # job.pause() ??
 #
 class job:
-    def __init__(self, loop, save_stdout=False, save_stderr=False, limit=(1024*4)):
+    def __init__(self, loop, save_stdout=False, save_stderr=False, save_mixed=False, limit=(1024*4)):
         self.loop = loop
         #self.stdout = bytearray()
         #self.stderr = bytearray()
         self.save_stdout = save_stdout
         self.save_stderr = save_stderr
+        self.save_mixed = save_mixed
+        self.buf_stdout = bytearray()
+        self.buf_stderr = bytearray()
+        self.buf_mixed = bytearray()
         self.limit = limit
+        self.tasks = list()
 
     def command(self, *args):
         self.command = args
@@ -27,9 +32,39 @@ class job:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
         self.process = await create
+        print('Process start: {}'.format(self.process.pid))
+        if self.save_mixed:
+            self.tasks.append(self.loop.create_task(self.stdout_saver()))
+            self.tasks.append(self.loop.create_task(self.stderr_saver()))
+        else:
+            if self.save_stdout:
+                self.tasks.append(self.loop.create_task(self.stdout_saver()))
+            if self.save_stderr:
+                self.tasks.append(self.loop.create_task(self.stderr_saver()))
 
+    async def stdout_saver(self):
+        while True:
+            data = await self.stdout()
+            if not data:
+                break
+            if self.save_mixed:
+                self.buf_mixed.extend(data)
+            if self.save_stdout:
+                self.buf_stdout.extend(data)
+
+    async def stderr_saver(self):
+        while True:
+            data = await self.stderr()
+            if not data:
+                break
+            if self.save_mixed:
+                self.buf_mixed.extend(data)
+            if self.save_stderr:
+                self.buf_stderr.extend(data)
+        
     async def finish(self):
         await self.process.wait()
+        print('Process end: {}'.format(self.process.pid))
 
     async def print_stdout(self):
         async for data in self.process.read():
@@ -104,6 +139,31 @@ async def printer(io, name):
 #        async for data in j.output():
 #            print('*** either ***')
 #            print(data)
+
+def print_bufs(j):
+    print('*** SAVED STDOUT ***')
+    print(j.buf_stdout.decode())
+    print('*** SAVED STDERR ***')
+    print(j.buf_stderr.decode())
+    print('*** SAVED MIXED ***')
+    print(j.buf_mixed.decode())
+
+async def test_buf_saves(loop):
+    j = job(loop, save_stdout=True)
+    j.command('./test2.sh', '5')
+    await j.run()
+    await j.finish()
+    print_bufs(j)
+    j = job(loop, save_stderr=True)
+    j.command('./test2.sh', '5')
+    await j.run()
+    await j.finish()
+    print_bufs(j)
+    j = job(loop, save_mixed=True)
+    j.command('./test2.sh', '5')
+    await j.run()
+    await j.finish()
+    print_bufs(j)
     
 async def main(loop):
     j = job(loop, save_stdout=True, save_stderr=True)
@@ -123,7 +183,7 @@ else:
     loop = asyncio.get_event_loop()
 
 #f = asyncio.Future(loop=loop)
-results = loop.run_until_complete(main(loop))
+results = loop.run_until_complete(test_buf_saves(loop))
 loop.close()
 
 # j.cmd = ['sleep', '1']
