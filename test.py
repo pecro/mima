@@ -3,19 +3,21 @@
 import asyncio
 
 value=7
-async def result():
+async def result(f):
     global value
-    await asyncio.sleep(0.1)
     value += 1
-    return value
+    f.set_result(value)
 
-async def wait_on_result1():
+async def wait_on_result1(f):
 #    value = await result()
-    print('wait_on_result1 => {}'.format(await result()))
+    await f
+    val=f.result()
+    print('wait_on_result1 => {}'.format(val))
 
-async def wait_on_result2():
-    value = await result()
-    print('wait_on_result2 => {}'.format(value))
+async def wait_on_result2(f):
+    await f
+    val=f.result()
+    print('wait_on_result2 => {}'.format(val))
 
 async def main():
     await wait_on_result1()
@@ -27,5 +29,7 @@ async def main():
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.gather(wait_on_result1(), wait_on_result2()))
+    f = asyncio.Future()
+    asyncio.ensure_future(result(f),loop=loop)
+    loop.run_until_complete(asyncio.gather(wait_on_result1(f), wait_on_result2(f)))
     loop.close()
