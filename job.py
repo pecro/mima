@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
+"""
+Some documentation for this module
+"""
+
+
 import asyncio
 import sys
+
 
 # job.start()
 # job.add_start_callback()
 # job.cancel()
-# job.status(), scheduled, not_started, running, timed_out, canceled, terminated, finished
+# job.status(), scheduled, not_started, running, timed_out, canceled,
+#               terminated, finished
 # job.
 # job.pause() ??
 #
-'''
-A helper class to allow async iteration on process output
-'''
-class output:
+
+# A helper class to allow async iteration on process output.
+class _output:
     def __init__(self, cor, limit):
         self.cor = cor
         self.limit = limit
@@ -27,8 +33,10 @@ class output:
             raise StopAsyncIteration
         return val
 
+
 class job:
-    def __init__(self, loop, save_stdout=False, save_stderr=False, save_mixed=False, echo=False, limit=(1024*4)):
+    def __init__(self, loop, save_stdout=False, save_stderr=False,
+                 save_mixed=False, echo=False, limit=(1024*4)):
         self.loop = loop
         self.save_stdout = save_stdout
         self.save_stderr = save_stderr
@@ -86,16 +94,12 @@ class job:
         await self.process.wait()
         print('Process end: {}'.format(self.process.pid))
 
-    async def print_stdout(self):
-        async for data in self.process.read():
-            print(data)
-
     async def stdout(self):
         data = await self.process.stdout.read(self.limit)
         return data
 
     def stdout_iter(self):
-        iter = output(self.process.stdout.read, limit=self.limit)
+        iter = _output(self.process.stdout.read, limit=self.limit)
         return iter
 
     async def stderr(self):
@@ -106,16 +110,6 @@ class job:
         data = await self.process.read()
         return data
 
-    def default_output_handler(self, data, save, buf):
-        print(data.decode('ascii'))
-        if save:
-            buf.extend(data)
-
-    def default_stdout_handler(self, data):
-        self.default_output_handler(b'stdout: ' + data, self.save_stdout, self.stdout)
-
-    def default_stderr_handler(self, data):
-        self.default_output_handler(b'stderr: ' + data, self.save_stderr, self.stderr)
 
 class chunk:
     def __init__(self, j):
@@ -131,16 +125,16 @@ class chunk:
             raise StopAsyncIteration
         return val
 
-#@asyncio.coroutine
-#def chunk(j):
-#    yield from j.process.read()
+# @asyncio.coroutine
+# def chunk(j):
+#     yield from j.process.read()
 
-#async def printer(j):
-#    ch = chunk(j)
-#    async for data in ch:
-#        print('*** stdout ***')
-#        print(data.decode().rstrip())
-#    return 'fin'
+# async def printer(j):
+#     ch = chunk(j)
+#     async for data in ch:
+#         print('*** stdout ***')
+#         print(data.decode().rstrip())
+#     return 'fin'
 
 async def printer(io, name):
     while True:
@@ -150,19 +144,20 @@ async def printer(io, name):
         print('*** {} ***'.format(name))
         print(data.decode().rstrip())
 
-#async def printer(j,fd):
-#    if fd == 1:
-#         data = await j.stdout()
-#         print('*** stdout ***')
-#         print(data)
-#    if fd == 2:
-#        async for data in j.stderr():
-#            print('*** stderr ***')
-#            print(data)
-#    if fd == 3:
-#        async for data in j.output():
-#            print('*** either ***')
-#            print(data)
+# async def printer(j,fd):
+#     if fd == 1:
+#          data = await j.stdout()
+#          print('*** stdout ***')
+#          print(data)
+#     if fd == 2:
+#         async for data in j.stderr():
+#             print('*** stderr ***')
+#             print(data)
+#     if fd == 3:
+#         async for data in j.output():
+#             print('*** either ***')
+#             print(data)
+
 
 def print_bufs(j):
     print('*** SAVED STDOUT ***')
@@ -195,7 +190,7 @@ async def output_with_iter(j):
         print(data.decode())
 
 async def test_async_iteration(loop):
-    j = job(loop)
+    j = job(loop, save_stdout=True)
     j.command('./test2.sh', '5')
     await j.start()
     loop.create_task(output_with_iter(j))
@@ -206,22 +201,23 @@ async def main(loop):
     j.command('./test2.sh', '5')
     await j.start()
     print('job started: {}'.format(j.process.pid))
-    #asyncio.ensure_future(printer(j))
+    # asyncio.ensure_future(printer(j))
     loop.create_task(printer(j.stdout, 'STDOUT'))
     loop.create_task(printer(j.stderr, 'STDERR'))
     await j.finish()
     print('job finished: {}'.format(j.process.pid))
 
-if sys.platform == "win32":
-    loop = asyncio.ProactorEventLoop()
-    asyncio.set_event_loop(loop)
-else:
-    loop = asyncio.get_event_loop()
+if __name__ == "__main__":
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
+    else:
+        loop = asyncio.get_event_loop()
 
-#f = asyncio.Future(loop=loop)
-#results = loop.run_until_complete(test_buf_saves(loop))
-loop.run_until_complete(test_async_iteration(loop))
-loop.close()
+    # f = asyncio.Future(loop=loop)
+    # results = loop.run_until_complete(test_buf_saves(loop))
+    loop.run_until_complete(main(loop))
+    loop.close()
 
 # j.cmd = ['sleep', '1']
 # j.add_on_stdout(print_stdout_handler)
