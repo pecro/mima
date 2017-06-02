@@ -55,7 +55,7 @@ class _output:
 
 class job:
     def __init__(self, loop, save_stdout=False, save_stderr=False,
-                 save_mixed=False, echo=False, limit=(1024*4)):
+                 save_mixed=False, echo=False, limit=(512)):
         self.loop = loop
         self.save_stdout = save_stdout
         self.save_stderr = save_stderr
@@ -122,12 +122,12 @@ class job:
     async def stdout_updater(self):
         count=1
         rcvd = self.stdout_rcvd
-        await self.started
         data = await self.process.stdout.read(self.limit)
         print ('stdout_updater({})'.format(count))
         count += 1
         while data:
             rcvd.current.set_result(data)
+            await asyncio.sleep(0.1)
             data = await self.process.stdout.read(self.limit)
             print ('stdout_updater({})'.format(count))
             count += 1
@@ -235,7 +235,7 @@ async def test_async_iteration(loop):
 
 async def main(loop):
     j = job(loop, save_stdout=True)
-    j.command('./test2.sh', '5')
+    j.command('./test2.sh', '50')
     await j.start()
     print('job started: {}'.format(j.process.pid))
     # asyncio.ensure_future(printer(j))

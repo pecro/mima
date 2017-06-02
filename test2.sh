@@ -1,6 +1,6 @@
 #!/bin/bash
 loop=$1
-delay=0.5
+delay=0.25
 
 for i in $(seq 1 $loop); do
     sleep $delay
