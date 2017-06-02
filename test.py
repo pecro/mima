@@ -48,17 +48,15 @@ class multi_wait_counter:
         self.r = refuture()
 
     async def free_running_generate(self):
-        f = self.r.current
         while True:
             await asyncio.sleep(0.1)
             if self.val < 10:
                 #print('free_running_generate: emitting {}'.format(self.val))
-                f.set_result(self.val)
+                self.r.current.set_result(self.val)
                 self.val += 1
-                f = self.r.next
             else:
                 #print('free_running_generate: emitting None')
-                f.set_result(None)
+                self.r.current.set_result(None)
                 self.r.done = True
                 break
 
@@ -66,22 +64,20 @@ class multi_wait_counter:
         await asyncio.gather(self.free_running_generate(), self.save(), self.print_count())
 
     async def save(self):
-        f = self.r.current
+        await self.r.current
         while True:
-            await f
-            if f.result() is None:
+            if self.r.current.result() is None:
                 break
-            self.count_list.append(f.result())
-            f = self.r.next
+            self.count_list.append(self.r.current.result())
+            await self.r.next
 
     async def print_count(self):
-        f = self.r.current
+        await self.r.current
         while True:
-            await f
-            if f.result() is None:
+            if self.r.current.result() is None:
                 break
-            print('print_count: {}'.format(f.result()))
-            f = self.r.next
+            print('print_count: {}'.format(self.r.current.result()))
+            await self.r.next
 
 global_count = 0
 global_current_count = asyncio.Future()
@@ -169,13 +165,12 @@ async def test_two_waiters_on_future():
     #await asyncio.sleep(0.01)
 
 async def external_printer(c):
-    f = c.r.current
+    await c.r.current
     while True:
-        await f
-        if f.result() is None:
+        if c.r.current.result() is None:
             break
-        print('external_printer: count: {}'.format(f.result()))
-        f = c.r.next
+        print('external_printer: count: {}'.format(c.r.current.result()))
+        await c.r.next
 
 async def test_multi_waiter_class():
     c = multi_wait_counter()
