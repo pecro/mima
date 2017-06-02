@@ -42,17 +42,17 @@ class Refuture:
 
 # A helper class to allow async iteration on process output.
 class _output:
-    def __init__(self, cor, limit):
-        self.cor = cor
-        self.limit = limit
+    def __init__(self, rcvd):
+        self.rcvd = rcvd
 
     def __aiter__(self):
         return self
 
     @asyncio.coroutine
     def __anext__(self):
-        val = yield from self.cor(self.limit)
-        if val == b'':
+        yield from self.rcvd.next
+        val = self.rcvd.current.result()
+        if val is None:
             raise StopAsyncIteration
         return val
 
@@ -143,7 +143,7 @@ class job:
         self.stdout_updater_finished.set_result(None)
 
     def stdout_iter(self):
-        iter = _output(self.process.stdout.read, limit=self.limit)
+        iter = _output(self.stdout_rcvd)
         return iter
 
     async def stdout(self):
@@ -236,7 +236,7 @@ async def test_async_iteration(loop):
     j = job(loop, save_stdout=True)
     j.command('./test2.sh', '5')
     await j.start()
-    loop.create_task(output_with_iter(j))
+    asyncio.ensure_future(output_with_iter(j))
     await j.finish()
 
 async def main(loop):
@@ -259,7 +259,8 @@ if __name__ == "__main__":
 
     # f = asyncio.Future(loop=loop)
     # results = loop.run_until_complete(test_buf_saves(loop))
-    loop.run_until_complete(main(loop))
+    # loop.run_until_complete(main(loop))
+    loop.run_until_complete(test_async_iteration(loop))
     loop.close()
 
 # j.cmd = ['sleep', '1']
