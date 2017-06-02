@@ -25,6 +25,10 @@ class Refuture:
         self.done = False
         self.finished = asyncio.Future()
 
+    async def get_lock(self):
+        while self.current.done():
+            await asyncio.sleep(0)
+
     async def update(self):
         while True:
             await asyncio.sleep(0)
@@ -126,12 +130,14 @@ class job:
         print ('stdout_updater({})'.format(count))
         count += 1
         while data:
+            await rcvd.get_lock()
             rcvd.current.set_result(data)
             await asyncio.sleep(0.1)
             data = await self.process.stdout.read(self.limit)
             print ('stdout_updater({})'.format(count))
             count += 1
         rcvd.done = True
+        await rcvd.get_lock()
         rcvd.current.set_result(None)
         await rcvd.finished
         self.stdout_updater_finished.set_result(None)
