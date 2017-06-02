@@ -8,6 +8,23 @@ def counter_gen(n):
         yield val
         val += 1
 
+class refuture:
+    def __init__(self):
+        self.current = asyncio.Future()
+        self.next = asyncio.Future()
+        asyncio.ensure_future(self.update())
+        self.done = False
+
+    async def update(self):
+        while True:
+            await self.current
+            await asyncio.sleep(0)
+            if self.done:
+                break
+            self.current = self.next
+            self.next = asyncio.Future()
+
+
 class counter_class:
     def __init__(self):
         self.val = 0
@@ -27,55 +44,44 @@ class multi_wait_counter:
     def __init__(self):
         self.val = 0
         #asyncio.ensure_future(self.free_running_generate())
-        self.current_future = asyncio.Future()
         self.count_list = list()
-        self.next_future = asyncio.Future()
-
-    async def ping_pong(self):
-        while True:
-            await self.current_future
-            #print('ping_pong: got current_future {}'.format(self.current_future.result()))
-            if self.current_future.result() is None:
-                break
-            await asyncio.sleep(0.001)
-            self.current_future = self.next_future
-            self.next_future = asyncio.Future()
-            #print('ping_pong: current <- next')
+        self.r = refuture()
 
     async def free_running_generate(self):
-        f = self.current_future
+        f = self.r.current
         while True:
             await asyncio.sleep(0.1)
             if self.val < 10:
                 #print('free_running_generate: emitting {}'.format(self.val))
                 f.set_result(self.val)
                 self.val += 1
-                f = self.next_future
+                f = self.r.next
             else:
                 #print('free_running_generate: emitting None')
                 f.set_result(None)
+                self.r.done = True
                 break
 
     async def finish(self):
-        await asyncio.gather(self.free_running_generate(), self.ping_pong(), self.save(), self.print_count())
+        await asyncio.gather(self.free_running_generate(), self.save(), self.print_count())
 
     async def save(self):
-        f = self.current_future
+        f = self.r.current
         while True:
             await f
             if f.result() is None:
                 break
             self.count_list.append(f.result())
-            f = self.next_future
+            f = self.r.next
 
     async def print_count(self):
-        f = self.current_future
+        f = self.r.current
         while True:
             await f
             if f.result() is None:
                 break
             print('print_count: {}'.format(f.result()))
-            f = self.next_future
+            f = self.r.next
 
 global_count = 0
 global_current_count = asyncio.Future()
@@ -163,13 +169,13 @@ async def test_two_waiters_on_future():
     #await asyncio.sleep(0.01)
 
 async def external_printer(c):
-    f = c.current_future
+    f = c.r.current
     while True:
         await f
         if f.result() is None:
             break
         print('external_printer: count: {}'.format(f.result()))
-        f = c.next_future
+        f = c.r.next
 
 async def test_multi_waiter_class():
     c = multi_wait_counter()
