@@ -17,6 +17,25 @@ import sys
 # job.pause() ??
 #
 
+class Refuture:
+    def __init__(self):
+        self.current = None
+        self.next = asyncio.Future()
+        asyncio.ensure_future(self.update())
+        self.done = False
+        self.finished = asyncio.Future()
+
+    async def update(self):
+        while True:
+            await asyncio.sleep(0)
+            self.current = self.next
+            self.next = asyncio.Future()
+            if self.done:
+                break
+            await self.current
+        self.finished.set_result(None)
+
+
 # A helper class to allow async iteration on process output.
 class _output:
     def __init__(self, cor, limit):
@@ -45,8 +64,9 @@ class job:
         self.buf_stderr = bytearray()
         self.buf_mixed = bytearray()
         self.limit = limit
-        self.tasks = list()
-        self._started = False
+        self.started = asyncio.Future()
+        self.stdout_rcvd = None
+        self.stdout_updater_finished = asyncio.Future()
 
     def command(self, *args):
         self.command = args
@@ -58,25 +78,30 @@ class job:
             stderr=asyncio.subprocess.PIPE)
         self.process = await create
         print('Process start: {}'.format(self.process.pid))
+        self.stdout_rcvd = Refuture()
+        asyncio.ensure_future(self.stdout_updater())
         if self.save_mixed:
-            self.tasks.append(self.loop.create_task(self.stdout_saver()))
-            self.tasks.append(self.loop.create_task(self.stderr_saver()))
+            asyncio.ensure_future(self.stdout_saver())
+            asyncio.ensure_future(self.stderr_saver())
         else:
             if self.save_stdout:
-                self.tasks.append(self.loop.create_task(self.stdout_saver()))
+                asyncio.ensure_future(self.stdout_saver())
             if self.save_stderr:
-                self.tasks.append(self.loop.create_task(self.stderr_saver()))
-        self._started = True
+                asyncio.ensure_future(self.stderr_saver())
+        self.started.set_result(None)
 
     async def stdout_saver(self):
+        rcvd = self.stdout_rcvd
+        await rcvd.next
         while True:
-            data = await self.stdout()
+            data = rcvd.current.result()
             if not data:
                 break
             if self.save_mixed:
                 self.buf_mixed.extend(data)
             if self.save_stdout:
                 self.buf_stdout.extend(data)
+            await rcvd.next
 
     async def stderr_saver(self):
         while True:
@@ -89,26 +114,36 @@ class job:
                 self.buf_stderr.extend(data)
 
     async def finish(self):
-        if not self._started:
-            await self.start()
+        await self.started
         await self.process.wait()
+        await self.stdout_updater_finished
         print('Process end: {}'.format(self.process.pid))
 
-    async def stdout(self):
+    async def stdout_updater(self):
+        count=1
+        rcvd = self.stdout_rcvd
+        await self.started
         data = await self.process.stdout.read(self.limit)
-        return data
+        print ('stdout_updater({})'.format(count))
+        count += 1
+        while data:
+            rcvd.current.set_result(data)
+            data = await self.process.stdout.read(self.limit)
+            print ('stdout_updater({})'.format(count))
+            count += 1
+        rcvd.done = True
+        rcvd.current.set_result(None)
+        await rcvd.finished
+        self.stdout_updater_finished.set_result(None)
 
     def stdout_iter(self):
         iter = _output(self.process.stdout.read, limit=self.limit)
         return iter
 
-    async def stderr(self):
-        data = await self.process.stderr.read(self.limit)
-        return data
-
-    async def output(self):
-        data = await self.process.read()
-        return data
+    async def stdout(self):
+        rcvd = self.stdout_rcvd
+        await rcvd.next
+        return rcvd.current.result()
 
 
 class chunk:
@@ -137,11 +172,13 @@ class chunk:
 #     return 'fin'
 
 async def printer(io, name):
+    count = 1
     while True:
         data = await io()
         if not data:
             break
-        print('*** {} ***'.format(name))
+        print('*** {}({}) ***'.format(name, count))
+        count += 1
         print(data.decode().rstrip())
 
 # async def printer(j,fd):
@@ -197,13 +234,13 @@ async def test_async_iteration(loop):
     await j.finish()
 
 async def main(loop):
-    j = job(loop, save_stdout=True, save_stderr=True)
+    j = job(loop, save_stdout=True)
     j.command('./test2.sh', '5')
     await j.start()
     print('job started: {}'.format(j.process.pid))
     # asyncio.ensure_future(printer(j))
-    loop.create_task(printer(j.stdout, 'STDOUT'))
-    loop.create_task(printer(j.stderr, 'STDERR'))
+    asyncio.ensure_future(printer(j.stdout, 'STDOUT'))
+    #asyncio.ensure_future(printer(j.stderr, 'STDERR'))
     await j.finish()
     print('job finished: {}'.format(j.process.pid))
 
