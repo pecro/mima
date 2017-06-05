@@ -7,6 +7,7 @@ Some documentation for this module
 import asyncio
 import sys
 import psutil
+from hurry.filesize import size
 
 # job.start()
 # job.add_start_callback()
@@ -157,7 +158,7 @@ class job:
 
 
 def get_root_process(pid):
-    root = psutil.process(pid)
+    root = psutil.Process(pid)
     while root.parent():
         print('pid={} has parent'.format(pid))
         root = root.parent()
@@ -166,9 +167,10 @@ def get_root_process(pid):
 
 async def treestat(pid, interval=5):
     """Periodically report process information."""
-    root = get_root_process(pid)
+    #root = get_root_process(pid)
+    root =psutil.Process(pid)
     while True:
-        print('{} cpu={} mem={}'.format(root.name(), root.memory_info()['rss']))
+        print('{} cpu={} mem={}'.format(root.pid, root.name(), size(root.memory_info()[0])))
         await asyncio.sleep(interval)
 
 async def printer(io, name):
