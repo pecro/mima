@@ -170,8 +170,17 @@ async def treestat(pid, interval=5):
     #root = get_root_process(pid)
     root =psutil.Process(pid)
     while True:
-        print('{} cpu={} mem={}'.format(root.pid, root.name(), size(root.memory_info()[0])))
-        await asyncio.sleep(interval)
+        print('name={} exe={} pid={}, ppid={} cpu={} user={} status={} mem={}'.format(
+            root.name(),
+            root.exe(),
+            root.pid,
+            root.ppid(),
+            root.cpu_percent(),
+            root.username(),
+            root.status(),
+            size(root.memory_info()[0]))
+        )
+        await asyncio.sleep(1)
 
 async def printer(io, name):
     count = 1
@@ -221,6 +230,12 @@ async def test_async_iteration(loop):
     asyncio.ensure_future(output_with_iter(j))
     await j.finish()
 
+async def test_empty(loop):
+    j = job(loop)
+    j.command('./testpig.sh')
+    await j.start()
+    await j.finish()
+
 async def main(loop):
     j = job(loop, save_stdout=True)
     j.command('./test2.sh', '50')
@@ -242,7 +257,7 @@ if __name__ == "__main__":
     # f = asyncio.Future(loop=loop)
     # results = loop.run_until_complete(test_buf_saves(loop))
     # loop.run_until_complete(main(loop))
-    loop.run_until_complete(test_async_iteration(loop))
+    loop.run_until_complete(test_empty(loop))
     loop.close()
 
 # j.cmd = ['sleep', '1']
